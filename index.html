@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name ="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatdb: Talk to your database and create data visualizations</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600&display=swap');
+    body {
+      font-family: 'Open Sans', sans-serif;
+      background-color: #f8f9fa;
+    }
+    .navbar {
+      background-color: #333333;
+    }
+    .navbar-brand, .nav-link {
+      font-weight: 600;
+      color: #ffffff;
+    }
+    .chat-container, .side-container {
+      height: calc(100vh - 120px);
+      overflow-y: auto;
+      background-color: #ffffff;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    .user-message .message {
+      background-color: #007bff;
+      color: #ffffff;
+      padding: 0.5rem 1rem;
+      border-radius: 1rem;
+      display: inline-block;
+      max-width: 80%;
+      font-weight: 400;
+    }
+    .bot-message .message {
+      background-color: #f1f0f0;
+      color: #333333;
+      padding: 0.5rem 1rem;
+      border-radius: 1rem;
+      display: inline-block;
+      max-width: 80%;
+      font-weight: 400;
+    }
+    .input-group {
+      margin-top: 1rem;
+      position: sticky;
+      bottom: 0;
+      background-color: #ffffff;
+      padding: 1rem;
+    }
+    .btn-custom {
+      background-color: #007bff;
+      color: #ffffff;
+      border: none;
+    }
+    .btn-custom:hover {
+      background-color: #0056b3;
+      color: #ffffff;
+    }
+    .list-group-item {
+      cursor: pointer;
+    }
+    .list-group-item:hover {
+      background-color: #f8f9fa;
+    }
+    .download-csv {
+      cursor: pointer;
+      color: #007bff;
+    }
+    .download-csv:hover {
+      text-decoration: underline;
+    }
+    .followup-question {
+      cursor: pointer;
+      color: #007bff;
+    }
+    .followup-question:hover {
+      text-decoration: underline;
+    }
+    .dark-mode {
+      background-color: #333333;
+      color: #ffffff;
+    }
+    .dark-mode .chat-container,
+    .dark-mode .side-container {
+      background-color: #444444;
+      color: #ffffff;
+    }
+    .dark-mode .bot-message .message {
+      background-color: #555555;
+      color: #ffffff;
+    }
+    .dark-mode .input-group {
+      background-color: #444444;
+    }
+    .dark-mode .btn-custom {
+      background-color: #007bff;
+      color: #ffffff;
+    }
+    .dark-mode .btn-custom:hover {
+      background-color: #0056b3;
+      color: #ffffff;
+    }
+    .dark-mode .list-group-item {
+      background-color: #444444;
+      color: #ffffff;
+    }
+    .dark-mode .list-group-item:hover {
+      background-color: #555555;
+    }
+    .dark-mode .table {
+      color: #ffffff;
+    }
+    .dark-mode .table thead th {
+      border-color: #555555;
+    }
+    .dark-mode .table tbody td {
+      border-color: #555555;
+    }
+    .dark-mode .table-striped tbody tr:nth-of-type(odd) {
+      background-color: #444444;
+    }
+    .dark-mode .download-csv,
+    .dark-mode .followup-question {
+      color: #ffffff;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" :class="{ 'dark-mode': darkMode }">
+    <nav class="navbar navbar-expand-lg navbar-dark">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">
+          <i class="fas fa-chart-line"></i>Chatdb: Talk to your database and create data visualizations
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav">
+            <li class="nav-item">
+              <a class="nav-link" @click="activeSection = 'chat'">
+                <i class="fas fa-comments"></i> Chat
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" @click="activeSection = 'history'">
+                <i class="fas fa-history"></i> History
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" @click="activeSection = 'training'">
+                <i class="fas fa-brain"></i> Training
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container-fluid mt-3">
+      <div class="row">
+        <div class="col-md-8">
+          <div class="card chat-container mb-3" v-if="activeSection === 'chat'">
+            <div class="card-body">
+              <div class="messages-container" ref="messagesContainer">
+                <div v-for="message in messages" :key="message.id">
+                  <div v-if="message.sender === 'user'" class="user-message mb-3">
+                    <div class="message">{{ message.text }}</div>
+                  </div>
+                  <div v-else class="bot-message mb-3">
+                    <div class="message">
+                      <div v-if="message.fig">
+                        <div :id="'plotly-' + message.id"></div>
+                      </div>
+                      <div v-if="message.df">
+                        <table class="table table-striped">
+                          <thead>
+                            <tr>
+                              <th v-for="column in Object.keys(message.df[0])" :key="column">{{ column }}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="(row, index) in message.df" :key="index">
+                              <td v-for="column in Object.keys(row)" :key="column">{{ row[column] }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <span class="download-csv" @click="downloadCSV(message.id)">Download CSV</span>
+                      </div>
+                      <div v-if="message.sql">
+                        <pre>{{ message.sql }}</pre>
+                      </div>
+                      <div v-if="message.followup_questions">
+                        <p>Follow-up questions:</p>
+                        <ul>
+                          <li v-for="(question, index) in message.followup_questions" :key="index" class="followup-question" @click="sendQuestion(question)">{{ question }}</li>
+                        </ul>
+                      </div>
+                      <div v-if="message.error">
+                        Error: {{ message.error }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="loading" class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+              </div>
+              <div class="input-group">
+                <input type="text" class="form-control" v-model="newQuestion" @keyup.enter="sendQuestion(newQuestion)" placeholder="Type your question..." aria-label="Question input">
+                <input type="file" id="audioInput" accept="audio/*" @change="onAudioFileChange" style="display: none;">
+                <button class="btn btn-custom" @click="startRecording">
+                  <i class="fas fa-microphone"></i> Ask with Voice
+                </button>
+                <button class="btn btn-custom" @click="sendQuestion(newQuestion)">
+                  <i class="fas fa-paper-plane"></i> Send Text Question
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card side-container mb-3" v-if="activeSection === 'history'">
+            <div class="card-body">
+              <h5 class="card-title">Question History</h5>
+              <ul class="list-group">
+                <li class="list-group-item" v-for="(question, index) in questionHistory" :key="index" @click="loadQuestion(question.id)">{{ question.question }}</li>
+              </ul>
+            </div>
+          </div>
+          <div class="card side-container mb-3" v-if="activeSection === 'training'">
+            <div class="card-body">
+              <h5 class="card-title">Training Data</h5>
+              <div class="mb-3">
+                <h6>Add Training Data</h6>
+                <div class="mb-2">
+                  <label for="training-data-type" class="form-label">Training Data Type:</label>
+                  <select id="training-data-type" class="form-select" v-model="newTrainingData.training_data_type">
+                    <option value="question">Question</option>
+                    <option value="sql">SQL</option>
+                    <option value="ddl">DDL</option>
+                    <option value="documentation">Documentation</option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label for="training-question" class="form-label">Question:</label>
+                  <input type="text" id="training-question" class="form-control" v-model="newTrainingData.question">
+                </div>
+                <div class="mb-2">
+                  <label for="training-content" class="form-label">Content:</label>
+                  <textarea id="training-content" class="form-control" v-model="newTrainingData.content"></textarea>
+                </div>
+                <button class="btn btn-custom" @click="addTrainingData">Add</button>
+              </div>
+              <div>
+                <h6>Training Examples</h6>
+                <table class="table table-striped">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Question</th>
+                      <th>Content</th>
+                      <th>Training Data Type</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="example in trainingData" :key="example.id">
+                      <td>{{ example.id }}</td>
+                      <td>{{ example.question }}</td>
+                      <td>{{ example.content }}</td>
+                      <td>{{ example.training_data_type }}</td>
+                      <td><span class="text-danger" @click="removeTrainingData(example.id)"><i class="fas fa-trash"></i></span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-secondary position-fixed bottom-0 end-0 m-3" @click="toggleDarkMode">
+      <i class="fas" :class="darkMode ? 'fa-sun' : 'fa-moon'"></i> {{ darkMode ? 'Light Mode' : 'Dark Mode' }}
+    </button>
+  </div>
+  <script>
+    new Vue({
+      el: '#app',
+      data: {
+        messages: [],
+        newQuestion: '',
+        loading: false,
+        questionHistory: [],
+        audioFile: null,
+        newTrainingData: {
+          training_data_type: 'question',
+          question: '',
+          content: ''
+        },
+        trainingData: [],
+        darkMode: false,
+        activeSection: 'chat'
+      },
+      methods: {
+        toggleDarkMode() {
+          this.darkMode = !this.darkMode;
+        },
+        async sendQuestion(question) {
+          this.loading = true;
+          this.messages.push({ sender: 'user', text: question });
+          this.newQuestion = '';
+
+          try {
+            const response = await axios.get('/api/v0/generate_sql', { params: { question } });
+            const id = response.data.id;
+            this.messages.push({ sender: 'bot', text: 'Generating SQL...', sql: response.data.text, id });
+
+            const sqlResponse = await axios.get('/api/v0/run_sql', { params: { id } });
+            const parsedDF = JSON.parse(sqlResponse.data.df.replace(/\bNaN\b/g, '"NaN"'));
+            this.messages.push({ sender: 'bot', text: 'Running SQL...', df: parsedDF, id });
+
+            const figureResponse = await axios.get('/api/v0/generate_plotly_figure', { params: { id } });
+            this.messages.push({ sender: 'bot', text: 'Generating visualization...', fig: figureResponse.data.fig, id });
+            this.$nextTick(() => {
+              Plotly.newPlot('plotly-' + id, JSON.parse(figureResponse.data.fig));
+            });
+
+            const followupResponse = await axios.get('/api/v0/generate_followup_questions', { params: { id } });
+            this.messages.push({ sender: 'bot', text: 'Follow-up questions:', followup_questions: followupResponse.data.questions, id });
+
+            this.getQuestionHistory();
+          } catch (error) {
+            this.messages.push({ sender: 'bot', error: error.response.data.error });
+          }
+
+          this.loading = false;
+          this.$nextTick(() => {
+            this.scrollToBottom();
+          });
+        },
+        async downloadCSV(id) {
+          window.location = `/api/v0/download_csv?id=${id}`;
+        },
+        async getQuestionHistory() {
+          const response = await axios.get('/api/v0/get_question_history');
+          this.questionHistory = response.data.questions;
+        },
+        async loadQuestion(id) {
+          this.messages = [];
+          this.loading = true;
+          this.activeSection = 'chat';
+
+          const response = await axios.get('/api/v0/load_question', { params: { id } });
+          const data = response.data;
+
+          this.messages.push({ sender: 'user', text: data.question });
+          this.messages.push({ sender: 'bot', text: 'SQL:', sql: data.sql, id });
+          this.messages.push({ sender: 'bot', text: 'Results:', df: data.df, id });
+          this.$nextTick(() => {
+        Plotly.newPlot('plotly-' + id, JSON.parse(data.fig));
+      });
+
+      this.messages.push({ sender: 'bot', text: 'Follow-up questions:', followup_questions: data.followup_questions, id });
+
+      this.loading = false;
+    },
+    async getTrainingData() {
+      const response = await axios.get('/api/v0/get_training_data');
+      this.trainingData = JSON.parse(response.data.df);
+    },
+    async addTrainingData() {
+      try {
+        const trainingData = {
+          question: this.newTrainingData.question,
+          content: this.newTrainingData.content
+        };
+
+        if (this.newTrainingData.training_data_type === 'sql') {
+          trainingData.sql = this.newTrainingData.content;
+        } else if (this.newTrainingData.training_data_type === 'ddl') {
+          trainingData.ddl = this.newTrainingData.content;
+        } else if (this.newTrainingData.training_data_type === 'documentation') {
+          trainingData.documentation = this.newTrainingData.content;
+        }
+
+        await axios.post('/api/v0/train', trainingData);
+        this.newTrainingData = {
+          training_data_type: 'question',
+          question: '',
+          content: ''
+        };
+        this.getTrainingData();
+      } catch (error) {
+        alert('Error adding training data: ' + error.response.data.error);
+      }
+    },
+    async removeTrainingData(id) {
+      try {
+        await axios.post('/api/v0/remove_training_data', { id });
+        this.getTrainingData();
+      } catch (error) {
+        alert('Error removing training data: ' + error.response.data.error);
+      }
+    },
+    scrollToBottom() {
+      this.$refs.messagesContainer.scrollTop = this.$refs.messagesContainer.scrollHeight;
+    },
+    async startRecording() {
+  try {
+    const response = await axios.post('/api/start_recording');
+    console.log('Recording started');
+    // Send the transcribed text to the sendQuestion method
+    this.sendQuestion(response.data.text);
+  } catch (error) {
+    console.error('Error starting recording:', error);
+  }
+  },
+    onAudioFileChange(event) {
+    this.audioFile = event.target.files[0];
+    this.sendAudio();
+  },
+  async sendAudio() {
+    if (this.audioFile) {
+      const formData = new FormData();
+      formData.append('file', this.audioFile);
+
+      try {
+        const response = await axios.post('/api/speech_to_text', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+        this.sendQuestion(response.data.text);
+      } catch (error) {
+        console.error('Error converting speech to text:', error);
+      }
+    }
+  }
+  },
+  created() {
+    this.getQuestionHistory();
+    this.getTrainingData();
+  }
+});
+</script> <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script> </body> </html>
